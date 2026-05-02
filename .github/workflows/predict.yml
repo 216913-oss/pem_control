@@ -8,8 +8,13 @@ jobs:
     # Wait for the model to exist
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: {name: model-files}
+      - name: Download Model from Training Workflow
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: train.yml            # The name of your training file
+          name: model-files              # Must match the name in train.yml exactly
+          latest_status: completed       # Only get the model if training finished
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
       - run: pip install -r requirements.txt
