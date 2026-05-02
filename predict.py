@@ -15,16 +15,19 @@ features = joblib.load("lag_features.pkl")
 # =========================================================
 # 🔥 FETCH DATA
 # =========================================================
+import pytz
+
 def get_recent_data(channel_id, read_key, minutes=1000):
-
-    end = datetime.datetime.now()
+    # Set timezone to Malaysia
+    tz = pytz.timezone('Asia/Kuala_Lumpur')
+    end = datetime.datetime.now(tz)
     start = end - datetime.timedelta(minutes=minutes)
-
+    
+    # ThingSpeak expects format: YYYY-MM-DD%20HH:NN:SS
     start_str = start.strftime('%Y-%m-%d%%20%H:%M:%S')
     end_str = end.strftime('%Y-%m-%d%%20%H:%M:%S')
 
     url = f'https://api.thingspeak.com/channels/{channel_id}/feeds.csv?api_key={read_key}&start={start_str}&end={end_str}'
-
     df = pd.read_csv(url)
 
     df.rename(columns={
