@@ -22,7 +22,7 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: RF_train.yml 
-          name: model-files
+          name: rf-model-files 
           path: .
           latest_status: completed
 
