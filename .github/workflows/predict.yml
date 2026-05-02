@@ -27,4 +27,5 @@ jobs:
       - run: pip install -r requirements.txt
       - env:
           PBI_URL: ${{ secrets.PBI_URL }}
+          THINGSPEAK_KEY: ${{ secrets.THINGSPEAK_KEY }} # Add this line!
         run: python predict.py
