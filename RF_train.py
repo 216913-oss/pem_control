@@ -3,6 +3,7 @@ import numpy as np
 import joblib
 import requests
 import datetime
+import os
 
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor  # Changed from MLPRegressor
