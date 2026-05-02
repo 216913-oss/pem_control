@@ -23,6 +23,11 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run Training Script
+        env:
+          # Map your GitHub Secrets to these Environment Variables
+          THINGSPEAK_READ_ID: ${{ secrets.THINGSPEAK_READ_ID }}
+          THINGSPEAK_READ_KEY: ${{ secrets.THINGSPEAK_READ_KEY }}
+          THINGSPEAK_WRITE_KEY: ${{ secrets.THINGSPEAK_WRITE_KEY }}
         run: python ANN_train.py
 
       - name: Upload Model Artifacts
