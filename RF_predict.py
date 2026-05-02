@@ -42,7 +42,7 @@ def get_recent_data(channel_id, read_key, minutes=1000):
     return df
 
 # Load Data
-df = get_recent_data('3321400', '4Q4YD3ZW21602X7L', minutes=1000)
+df = get_recent_data(${{ secrets.THINGSPEAK_READ_ID }}, ${{ secrets.THINGSPEAK_READ_KEY }}, minutes=1000)
 
 # =========================================================
 # 🔥 3. PHYSICS PREPARATION
