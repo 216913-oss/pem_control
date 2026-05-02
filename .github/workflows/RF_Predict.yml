@@ -21,7 +21,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v8
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: train.yml 
+          workflow: RF_train.yml 
           name: model-files 
           latest_status: completed
 
