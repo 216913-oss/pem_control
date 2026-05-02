@@ -1,4 +1,4 @@
-name: 5-Min Predict
+name: ANN Predict
 on:
   schedule: [{cron: "*/5 * * * *"}]
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
       - name: Run Prediction Script
         env:
           THINGSPEAK_KEY: ${{ secrets.THINGSPEAK_KEY }}
-        run: python predict.py
+        run: python ANN_predict.py
 
       - name: Commit and Push Forecast
         run: |
@@ -41,7 +41,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Stage and commit the new 1-month forecast
-          git add H2_1week_prediction.csv
+          git add ANN_prediction.csv
           git commit -m "Update electrolyzer forecast [1-month]" || exit 0
           
           # Pull latest changes from origin and put your commit on top
