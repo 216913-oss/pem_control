@@ -37,7 +37,12 @@ def get_one_month_data(channel_id, read_key):
 # =========================================================
 # 2. LOAD DATA
 # =========================================================
-df = get_one_month_data((${{ secrets.THINGSPEAK_READ_ID }}, ${{ secrets.THINGSPEAK_READ_KEY }})
+ts_read_id = os.getenv('THINGSPEAK_READ_ID', '3321400')
+ts_read_key = os.getenv('THINGSPEAK_READ_KEY', '4Q4YD3ZW21602X7L')
+ts_write_key = os.getenv('THINGSPEAK_WRITE_KEY', 'F6NHRHZ60PHVSXBP')
+
+# Call function with environment variables
+df = get_one_month_data(ts_read_id, ts_read_key)
 
 df.rename(columns={
     'field1':'V',
@@ -176,7 +181,7 @@ print(f"📡 Uploading metrics to ThingSpeak...")
 # Using the provided URL structure
 upload_url = (
     f"https://api.thingspeak.com/update?"
-    f"api_key=${{ secrets.THINGSPEAK_WRITE_KEY }}"
+    f"api_key={ts_write_key}"
     f"&field3={float(r2):.4f}"
     f"&field4={float(rmse):.4f}"
 )
