@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Downloads full history so rebase can succeed
+          fetch-depth: 0 # CRITICAL: Downloads full history for rebase to work
 
       - name: Download Model from Training Workflow
         uses: dawidd6/action-download-artifact@v8
@@ -38,15 +38,12 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 1. Add the file
+          # Stage and commit the new 1-month forecast
           git add forecast.csv
-          
-          # 2. Commit only if there's a change
           git commit -m "Update electrolyzer forecast [1-month]" || exit 0
           
-          # 3. Fetch and Rebase (This is the critical part)
-          git fetch origin main
-          git rebase origin/main
+          # Pull latest changes from origin and put your commit on top
+          git pull --rebase origin main
           
-          # 4. Push
+          # Push the combined history
           git push origin main
