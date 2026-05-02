@@ -102,7 +102,7 @@ for step in range(future_steps):
 # 🔥 5. SAVE & PLOT
 # =========================================================
 pred_df = pd.DataFrame(predictions)
-file_path = "H2_1week_prediction.csv"
+file_path = "ANN_prediction.csv"
 
 # Force Overwrite to prevent Merge Conflicts in GitHub Actions
 pred_df.to_csv(file_path, index=False)
