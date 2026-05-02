@@ -3,16 +3,32 @@ from datetime import datetime
 
 def run():
     try:
-        # 1. Load Files (Check current folder)
-        # Ensure these names match your files in GitHub exactly
-        model = joblib.load("ann_electrolyser_model.pkl")
-        scaler = joblib.load("ann_scaler.pkl")
+        # --- NEW ROBUST DATA FETCHING ---
+        # Get these from your GitHub Secrets
+        channel_id = "3321400"
+        api_key = os.getenv("THINGSPEAK_KEY") # Add this to GitHub Secrets!
         pbi_url = os.getenv("PBI_URL")
 
-        # 2. Fetch Data from ThingSpeak
-        url = 'https://api.thingspeak.com/channels/3321400/feeds.csv?results=1'
-        data = pd.read_csv(url).iloc[-1]
-        v, i, t = float(data['field1']), float(data['field2']), float(data['field3'])
+        # Use the JSON API (much more stable than CSV)
+        ts_url = f"https://api.thingspeak.com/channels/{channel_id}/feeds/last.json?api_key={api_key}"
+        
+        print(f"📡 Fetching data from ThingSpeak...")
+        ts_res = requests.get(ts_url)
+        
+        if ts_res.status_code != 200:
+            print(f"❌ ThingSpeak Error {ts_res.status_code}: {ts_res.text}")
+            return # Stop here if we can't get data
+
+        data = ts_res.json()
+        
+        # Map fields (Adjust field numbers to match your ThingSpeak setup)
+        v = float(data.get('field1', 0))
+        i = float(data.get('field2', 0))
+        t = float(data.get('field3', 0))
+        # --------------------------------
+        
+        print(f"✅ Data received: V={v}, I={i}, T={t}")
+
 
         # 3. Model Prediction
         scaled = scaler.transform([[v, i, t]])
