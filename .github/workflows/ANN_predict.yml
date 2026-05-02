@@ -21,8 +21,9 @@ jobs:
         uses: dawidd6/action-download-artifact@v8
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: train.yml 
-          name: model-files 
+          workflow: ann_train.yml 
+          name: ann-model-files 
+          path: . 
           latest_status: completed
 
       - uses: actions/setup-python@v5
