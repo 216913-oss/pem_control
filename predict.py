@@ -75,6 +75,8 @@ base_T = latest_row['T']
 error_history = history['target_err'].tolist()
 
 print(f"🚀 Generating logical forecast for {future_steps} minutes...")
+latest_row = history.iloc[-1]
+start_time = pd.to_datetime(latest_row['created_at'])
 
 for step in range(future_steps):
     # -----------------------------------------------------
@@ -115,10 +117,10 @@ for step in range(future_steps):
     # -----------------------------------------------------
     # E. STORE & UPDATE
     # -----------------------------------------------------
-    next_time = latest_row['created_at'] + pd.Timedelta(minutes=step + 1)
+    next_time = start_time + pd.Timedelta(minutes=step + 1)
     
     predictions.append({
-        'time': next_time,
+        'time': next_time, 
         'H2_pred': h2_final
     })
     
