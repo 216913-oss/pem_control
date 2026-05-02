@@ -167,3 +167,25 @@ plt.plot(h2_pred[:200], '--', label='Lag Model')
 plt.legend()
 plt.title("Lag Model Prediction (t+1)")
 plt.show()
+
+# =========================================================
+# 15. UPLOAD METRICS TO THINGSPEAK
+# =========================================================
+print(f"📡 Uploading metrics to ThingSpeak...")
+
+# Using the provided URL structure
+upload_url = (
+    f"https://api.thingspeak.com/update?"
+    f"api_key=F6NHRHZ60PHVSXBP"
+    f"&field3={float(r2):.4f}"
+    f"&field4={float(rmse):.4f}"
+)
+
+try:
+    response = requests.get(upload_url)
+    if response.status_code == 200:
+        print(f"✅ Metrics uploaded successfully: R2={r2:.4f}, RMSE={rmse:.4f}")
+    else:
+        print(f"⚠️ Upload failed with status code: {response.status_code}")
+except Exception as e:
+    print(f"❌ Error during upload: {e}")
