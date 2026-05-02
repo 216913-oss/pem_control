@@ -11,10 +11,14 @@ jobs:
       - name: Download Model from Training Workflow
         uses: dawidd6/action-download-artifact@v8
         with:
+          # This token is built-in, you don't need to add it to Secrets
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: train.yml            # The name of your training file
-          name: model-files              # Must match the name in train.yml exactly
-          latest_status: completed       # Only get the model if training finished
+          # The filename of your training workflow
+          workflow: train.yml 
+          # Must match the name used in your 'upload-artifact' step
+          name: model-files 
+          # Ensures you get the latest successful version
+          latest_status: completed
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
       - run: pip install -r requirements.txt
