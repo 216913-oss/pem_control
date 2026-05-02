@@ -135,9 +135,9 @@ print(f"🔥 RF MODEL RMSE: {rmse:.4f}")
 # =========================================================
 # 13. SAVE
 # =========================================================
-joblib.dump(model, "lag_model.pkl")
-joblib.dump(scaler, "lag_scaler.pkl")
-joblib.dump(features, "lag_features.pkl")
+joblib.dump(model, "RF_lag_model.pkl")
+joblib.dump(scaler, "RF_lag_scaler.pkl")
+joblib.dump(features, "RF_lag_features.pkl")
 
 print("✅ Random Forest model saved")
 
