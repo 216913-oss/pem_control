@@ -28,6 +28,9 @@ jobs:
       - name: Upload Model Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: model-files
-          path: "*.pkl"
+          name: ann-model-files  # Unique name
+          path: |
+            ANN_lag_model.pkl
+            ANN_lag_scaler.pkl
+            ANN_lag_features.pkl
           retention-days: 7
