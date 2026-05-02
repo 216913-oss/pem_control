@@ -1,0 +1,51 @@
+name: RF Predict
+on:
+  schedule: [{cron: "*/5 * * * *"}]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  predict:
+    runs-on: ubuntu-latest
+    env:
+      TZ: 'Asia/Kuala_Lumpur'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # CRITICAL: Downloads full history for rebase to work
+
+      - name: Download Model from Training Workflow
+        uses: dawidd6/action-download-artifact@v8
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: train.yml 
+          name: model-files 
+          latest_status: completed
+
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.10'}
+
+      - run: pip install -r requirements.txt
+
+      - name: Run Prediction Script
+        env:
+          THINGSPEAK_KEY: ${{ secrets.THINGSPEAK_KEY }}
+        run: python RF_predict.py
+
+      - name: Commit and Push Forecast
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Stage and commit the new 1-month forecast
+          git add RF_prediction.csv
+          git commit -m "Update electrolyzer forecast [1-month]" || exit 0
+          
+          # Pull latest changes from origin and put your commit on top
+          git pull --rebase origin main
+          
+          # Push the combined history
+          git push origin main
