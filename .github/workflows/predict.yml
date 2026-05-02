@@ -39,7 +39,7 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Stage and commit the new 1-month forecast
-          git add forecast.csv
+          git add H2_1week_prediction.csv
           git commit -m "Update electrolyzer forecast [1-month]" || exit 0
           
           # Pull latest changes from origin and put your commit on top
