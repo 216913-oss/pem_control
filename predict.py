@@ -31,30 +31,34 @@ def generate_monthly_forecast(state):
     # 1 month = 30 days * 24 hours * 60 minutes = 43,200 rows
     total_min = 30 * 24 * 60
     t = np.arange(total_min)
-    
-    # Electrolyser Duty Cycle (e.g., 60 mins ON, 30 mins OFF)
     is_on = (t % 90) < 60
     
-    # Simulate future conditions based on current state
+    # 1. Simulate the data
     fut_df = pd.DataFrame({
         'V': np.where(is_on, state['V'] + np.random.normal(0, 0.02, total_min), 1.5),
         'I': np.where(is_on, state['I'] + np.random.normal(0, 0.05, total_min), 0.0),
-        'T': state['T'] + 2*np.sin(2*np.pi*t/1440), # Diurnal temp swing
+        'T': state['T'] + 2 * np.sin(2 * np.pi * t / 1440),
         'cycle_pos': state['cycle_pos'] + t,
         'power': 0.0
     })
     fut_df['power'] = fut_df['V'] * fut_df['I']
     
-    # ANN Prediction
-    scaled = scaler.transform(fut_df.values)
-    pred_err = ann_model.predict(scaled)
+    # --- THE CRITICAL FIX ---
+    # Your scaler only wants the 3 original features (V, I, T). 
+    # We subset the dataframe before calling .values
+    input_features = fut_df[['V', 'I', 'T']] 
+    scaled = scaler.transform(input_features.values)
+    # ------------------------
+    
+    pred_err = model.predict(scaled)
+    
+    # Formula: $$H_2 = \max((I_{future} \times 7.6) - \text{error}, 0)$$
     h2_forecast = np.where(is_on, np.maximum((fut_df['I'] * 7.6) - pred_err, 0), 0)
     
-    # Generate rows with seconds set to :00
+    # Generate timestamped rows with :00 seconds
     now = datetime.utcnow().replace(second=0, microsecond=0)
     new_rows = []
     for i, val in enumerate(h2_forecast):
-        # We save EVERY minute now
         ts = (now + timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M:00")
         new_rows.append({"timestamp": ts, "h2_value": float(val), "category": "Forecast"})
     
