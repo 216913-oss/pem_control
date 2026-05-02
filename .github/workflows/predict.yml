@@ -35,6 +35,15 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Stage the new large forecast file
           git add forecast.csv
-          git commit -m "Update electrolyzer forecast" || exit 0
-          git push
+          
+          # Commit only if there are changes
+          git commit -m "Update electrolyzer forecast [1-month]" || exit 0
+          
+          # THE FIX: Pull the latest changes from main and put your commit on top
+          git pull --rebase origin main
+          
+          # Now push the merged history
+          git push origin main
