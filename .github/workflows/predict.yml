@@ -2,30 +2,39 @@ name: 5-Min Predict
 on:
   schedule: [{cron: "*/5 * * * *"}]
   workflow_dispatch:
+
 permissions:
   actions: read
-  contents: read
+  contents: write # Allows the bot to save your forecast.csv
+
 jobs:
   predict:
     runs-on: ubuntu-latest
-    # Wait for the model to exist
     steps:
       - uses: actions/checkout@v4
+      
       - name: Download Model from Training Workflow
         uses: dawidd6/action-download-artifact@v8
         with:
-          # This token is built-in; you don't need to create anything
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          # Use the filename of your training workflow
           workflow: train.yml 
-          # This must match the name used in your 'upload-artifact' step
           name: model-files 
-          # Grabs the model from the last successful training run
           latest_status: completed
+
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
+
       - run: pip install -r requirements.txt
-      - env:
-          PBI_URL: ${{ secrets.PBI_URL }}
-          THINGSPEAK_KEY: ${{ secrets.THINGSPEAK_KEY }} # Add this line!
+
+      - name: Run Prediction Script
+        env:
+          THINGSPEAK_KEY: ${{ secrets.THINGSPEAK_KEY }}
         run: python predict.py
+
+      - name: Commit and Push Forecast
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add forecast.csv
+          git commit -m "Update electrolyzer forecast" || exit 0
+          git push
