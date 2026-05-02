@@ -1,22 +1,31 @@
-import os, joblib, pandas as pd, numpy as np
-from datetime import datetime, timedelta
+import pandas as pd
+import numpy as np
+import joblib
+import datetime
+import matplotlib.pyplot as plt
+import os
 
-# -----------------------------
-# CONFIG
-# -----------------------------
-CHANNEL_ID = '3321400'
-READ_KEY = os.getenv("THINGSPEAK_KEY")
-CSV_FILE = "forecast.csv"
+# =========================================================
+# 🔥 LOAD MODEL
+# =========================================================
+model = joblib.load("lag_model.pkl")
+scaler = joblib.load("lag_scaler.pkl")
+features = joblib.load("lag_features.pkl")
 
-F = 96500
-Vm = 24.465
+# =========================================================
+# 🔥 FETCH DATA
+# =========================================================
+def get_recent_data(channel_id, read_key, minutes=1000):
 
-# -----------------------------
-# 1. GET CURRENT STATE
-# -----------------------------
-def get_state():
-    url = f'https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.csv?api_key={READ_KEY}&results=500'
-    df = pd.read_csv(url).dropna()
+    end = datetime.datetime.now()
+    start = end - datetime.timedelta(minutes=minutes)
+
+    start_str = start.strftime('%Y-%m-%d%%20%H:%M:%S')
+    end_str = end.strftime('%Y-%m-%d%%20%H:%M:%S')
+
+    url = f'https://api.thingspeak.com/channels/{channel_id}/feeds.csv?api_key={read_key}&start={start_str}&end={end_str}'
+
+    df = pd.read_csv(url)
 
     df.rename(columns={
         'field1': 'V',
@@ -26,115 +35,145 @@ def get_state():
     }, inplace=True)
 
     df['created_at'] = pd.to_datetime(df['created_at'])
-    df = df.sort_values('created_at')
 
-    latest = df.iloc[-1]
+    df = df.set_index('created_at')
+    df = df.resample('1min').mean().fillna(0).reset_index()
 
-    return {
-        'V': float(latest['V']),
-        'I': float(latest['I']),
-        'T': float(latest['T'])
-    }
+    return df
 
-# -----------------------------
-# 2. FORECAST FUNCTION
-# -----------------------------
-def generate_monthly_forecast(state):
 
-    model = joblib.load('ann_electrolyser_model.pkl')
-    scaler = joblib.load('ann_scaler.pkl')
-    features = joblib.load('feature_list.pkl')
+# =========================================================
+# 🔥 LOAD DATA
+# =========================================================
+df = get_recent_data('3321400', '4Q4YD3ZW21602X7L', minutes=1000)
 
-    total_min = 30 * 24 * 60
-    t = np.arange(total_min)
-    is_on = (t % 90) < 60
+# =========================================================
+# 🔥 PHYSICS MODEL
+# =========================================================
+df['theo_H2'] = (df['I'] / 2 / 96500) * 24.4651 * 1000 * 60
+df['target_err'] = df['theo_H2'] - df['H2_actual']
 
-    # -----------------------------
-    # FUTURE SIMULATION
-    # -----------------------------
-    fut_df = pd.DataFrame({
-        'V': np.where(is_on,
-                      state['V'] + np.random.normal(0, 0.02, total_min),
-                      1.5),
+history = df.copy().reset_index(drop=True)
 
-        'I': np.where(is_on,
-                      state['I'] + np.random.normal(0, 0.05, total_min),
-                      0.0),
+if len(history) < 40:
+    raise ValueError("❌ Not enough data (>40 rows required)")
 
-        'T': state['T'] + 2 * np.sin(2 * np.pi * t / 1440)
+# =========================================================
+# 🔥 LOGICAL CONTINUOUS FORECAST (NON-RECURSIVE)
+# =========================================================
+future_steps = 7 * 24 * 60
+predictions = []
+
+# 1. Get the last known steady-state values from your fetched data
+# This ensures the forecast starts exactly where the hardware is now
+latest_row = history.iloc[-1]
+base_V = latest_row['V']
+base_I = latest_row['I']
+base_T = latest_row['T']
+
+# 2. Extract the starting error history for the lag features
+# We convert to a list for faster processing than a full DataFrame
+error_history = history['target_err'].tolist()
+
+print(f"🚀 Generating logical forecast for {future_steps} minutes...")
+
+for step in range(future_steps):
+    # -----------------------------------------------------
+    # A. LOGIC: Minute-to-minute fluctuations (+/-) 
+    # This prevents the "robotic" pattern seen in previous graphs
+    # -----------------------------------------------------
+    v_sim = base_V + np.random.uniform(-0.00489, 0.00489)
+    i_sim = base_I + np.random.uniform(-0.3, 0.3)
+    
+    # Temperature: Diurnal cycle based on starting T
+    # 1440 minutes = 24 hours
+    t_sim = base_T + 1.5 * np.sin(2 * np.pi * step / 1440)
+    
+    # -----------------------------------------------------
+    # B. LAG FEATURES (Directly from list, no dataframe shift)
+    # -----------------------------------------------------
+    lag1 = error_history[-1]
+    lag2 = error_history[-2]
+    lag5 = error_history[-5]
+    lag30 = error_history[-30]
+    ma10 = np.mean(error_history[-10:])
+    
+    # -----------------------------------------------------
+    # C. ML PREDICTION
+    # -----------------------------------------------------
+    feat_row = np.array([[v_sim, i_sim, t_sim, lag1, lag2, lag5, lag30, ma10]])
+    X_scaled = scaler.transform(feat_row)
+    pred_err = model.predict(X_scaled)[0]
+    
+    # -----------------------------------------------------
+    # D. PHYSICS RECONSTRUCTION + LOGICAL AGING
+    # -----------------------------------------------------
+    # We add a 0.2% efficiency drop over the week (aging_factor)
+    aging_factor = 1 - (0.002 * (step / future_steps))
+    theo_h2 = (i_sim / 2 / 96500) * 24.4651 * 1000 * 60
+    h2_final = max(0, (theo_h2 - pred_err) * aging_factor)
+    
+    # -----------------------------------------------------
+    # E. STORE & UPDATE
+    # -----------------------------------------------------
+    next_time = latest_row['created_at'] + pd.Timedelta(minutes=step + 1)
+    
+    predictions.append({
+        'time': next_time,
+        'H2_pred': h2_final
     })
+    
+    # Update the error history list for the next iteration's lags
+    error_history.append(pred_err)
 
-    # POWER FEATURE (required)
-    fut_df['P'] = fut_df['V'] * fut_df['I']
+# Convert to DataFrame
+pred_df = pd.DataFrame(predictions)
 
-    # -----------------------------
-    # ENSURE FEATURE ORDER MATCHES TRAINING
-    # -----------------------------
-    input_features = fut_df[features]   # MUST be ['V','I','T','P']
+# =========================================================
+# 🔥 SAVE WITH MERGE
+# =========================================================
+file_path = "H2_1week_prediction.csv"
 
-    scaled = scaler.transform(input_features.values)
+if os.path.exists(file_path):
+    old_df = pd.read_csv(file_path)
+    old_df['time'] = pd.to_datetime(old_df['time'])
+else:
+    old_df = pd.DataFrame(columns=['time', 'H2_pred'])
 
-    # -----------------------------
-    # PREDICT ERROR
-    # -----------------------------
-    pred_err = model.predict(scaled)
+pred_df['time'] = pd.to_datetime(pred_df['time'])
 
-    # -----------------------------
-    # PHYSICS MODEL
-    # -----------------------------
-    h2_theo = (fut_df['I'] / (2 * F)) * Vm * 1000 * 60
+combined = pd.concat([old_df, pred_df])
+combined = combined.sort_values('time')
+combined = combined.drop_duplicates(subset='time', keep='last')
 
-    h2_forecast = np.where(
-        is_on,
-        np.maximum(h2_theo - pred_err, 0),
-        0
-    )
+combined.to_csv(file_path, index=False)
 
-    # -----------------------------
-    # TIMESTAMPS
-    # -----------------------------
-    now = datetime.utcnow().replace(second=0, microsecond=0)
+print(f"✅ Saved predictions: {len(combined)} rows")
 
-    rows = []
-    for i, val in enumerate(h2_forecast):
-        ts = (now + timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M:00")
-        rows.append({
-            "timestamp": ts,
-            "h2_value": float(val),
-            "category": "Forecast"
-        })
+# =========================================================
+# 🔥 PLOT
+# =========================================================
+def plot_forecast(pred_df):
 
-    return pd.DataFrame(rows)
+    if pred_df.empty:
+        print("❌ No data")
+        return
 
-# -----------------------------
-# 3. MAIN PIPELINE
-# -----------------------------
-if __name__ == "__main__":
+    forecast = pred_df['H2_pred'].values
 
-    print("🔋 Fetching Electrolyser state...")
-    state = get_state()
+    plt.figure(figsize=(15, 6))
 
-    print("🔮 Generating 1-Month Forecast...")
-    new_forecast_df = generate_monthly_forecast(state)
+    plt.subplot(2, 1, 1)
+    plt.plot(forecast[:1000])
+    plt.title("Short-Term Forecast")
+    plt.grid(True)
 
-    now_str = datetime.utcnow().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:00")
+    plt.subplot(2, 1, 2)
+    plt.plot(forecast)
+    plt.title("1-Week Forecast")
+    plt.grid(True)
 
-    if os.path.exists(CSV_FILE):
-        old_df = pd.read_csv(CSV_FILE)
+    plt.tight_layout()
+    plt.show()
 
-        history = old_df[old_df['category'] == 'Actual']
-        passed = old_df[(old_df['category'] == 'Forecast') &
-                        (old_df['timestamp'] < now_str)].copy()
-
-        passed['category'] = 'Actual'
-
-        final_df = pd.concat([history, passed, new_forecast_df])
-        final_df = final_df.drop_duplicates('timestamp', keep='last')
-    else:
-        final_df = new_forecast_df
-
-    final_df = final_df.sort_values('timestamp').tail(60000)
-
-    final_df.to_csv(CSV_FILE, index=False)
-
-    print(f"✅ Forecast updated | Rows: {len(final_df)}")
+plot_forecast(pred_df)
