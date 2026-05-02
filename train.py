@@ -68,7 +68,7 @@ df['P'] = df['V'] * df['I']
 df['cycle_pos'] = (df['I'] > 0.5).cumsum()
 
 # IMPORTANT FEATURES
-features = ['V', 'I', 'T', 'P', 'cycle_pos']
+features = ['V', 'I', 'T', 'P']
 
 X = df[features].values
 y = df['target_err'].values
