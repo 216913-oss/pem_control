@@ -6,22 +6,18 @@ import matplotlib.pyplot as plt
 import os
 
 # =========================================================
-# 🔥 LOAD MODEL
+# 🔥 1. LOAD MODEL & ASSETS
 # =========================================================
 model = joblib.load("lag_model.pkl")
 scaler = joblib.load("lag_scaler.pkl")
 features = joblib.load("lag_features.pkl")
 
 # =========================================================
-# 🔥 FETCH DATA
+# 🔥 2. FETCH DATA (FIXED FOR MALAYSIA TIME)
 # =========================================================
-import pytz
-
 def get_recent_data(channel_id, read_key, minutes=1000):
-    # Force UTC+8 (Malaysia Time)
+    # Force UTC+8 (Malaysia Time) for the request
     tz_offset = datetime.timezone(datetime.timedelta(hours=8))
-    
-    # Get current time in Malaysia
     end = datetime.datetime.now(tz_offset)
     start = end - datetime.timedelta(minutes=minutes)
 
@@ -29,11 +25,13 @@ def get_recent_data(channel_id, read_key, minutes=1000):
     end_str = end.strftime('%Y-%m-%d%%20%H:%M:%S')
 
     url = f'https://api.thingspeak.com/channels/{channel_id}/feeds.csv?api_key={read_key}&start={start_str}&end={end_str}'
-    
     df = pd.read_csv(url)
-    df.rename(columns={'field1':'V','field2':'I','field3':'T','field4':'H2_actual'}, inplace=True)
-    
-    # Ensure the 'created_at' from ThingSpeak is converted to MYT
+
+    df.rename(columns={
+        'field1': 'V', 'field2': 'I', 'field3': 'T', 'field4': 'H2_actual'
+    }, inplace=True)
+
+    # Convert ThingSpeak UTC to Malaysia Time and strip timezone info for CSV compatibility
     df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_convert('Asia/Kuala_Lumpur').dt.tz_localize(None)
 
     df = df.set_index('created_at')
@@ -41,140 +39,82 @@ def get_recent_data(channel_id, read_key, minutes=1000):
 
     return df
 
-# =========================================================
-# 🔥 LOAD DATA
-# =========================================================
+# Load Data
 df = get_recent_data('3321400', '4Q4YD3ZW21602X7L', minutes=1000)
 
 # =========================================================
-# 🔥 PHYSICS MODEL
+# 🔥 3. PHYSICS PREPARATION
 # =========================================================
 df['theo_H2'] = (df['I'] / 2 / 96500) * 24.4651 * 1000 * 60
 df['target_err'] = df['theo_H2'] - df['H2_actual']
 
 history = df.copy().reset_index(drop=True)
-
 if len(history) < 40:
     raise ValueError("❌ Not enough data (>40 rows required)")
 
 # =========================================================
-# 🔥 LOGICAL CONTINUOUS FORECAST (NON-RECURSIVE)
+# 🔥 4. FORECAST LOOP (NO AGING)
 # =========================================================
 future_steps = 7 * 24 * 60
 predictions = []
 
-# 1. Get the last known steady-state values from your fetched data
-# This ensures the forecast starts exactly where the hardware is now
 latest_row = history.iloc[-1]
 base_V = latest_row['V']
 base_I = latest_row['I']
 base_T = latest_row['T']
+start_time = latest_row['created_at']
 
-# 2. Extract the starting error history for the lag features
-# We convert to a list for faster processing than a full DataFrame
+# Extract starting error history for lag features
 error_history = history['target_err'].tolist()
 
-print(f"🚀 Generating logical forecast for {future_steps} minutes...")
-latest_row = history.iloc[-1]
-start_time = pd.to_datetime(latest_row['created_at'])
+print(f"🚀 Generating forecast for {future_steps} minutes (No Aging)...")
 
 for step in range(future_steps):
-    # -----------------------------------------------------
-    # A. LOGIC: Minute-to-minute fluctuations (+/-) 
-    # This prevents the "robotic" pattern seen in previous graphs
-    # -----------------------------------------------------
+    # A. SENSOR FLUCTUATIONS (Logical Jitter)
     v_sim = base_V + np.random.uniform(-0.00489, 0.00489)
     i_sim = base_I + np.random.uniform(-0.3, 0.3)
     
-    # Temperature: Diurnal cycle based on starting T
-    # 1440 minutes = 24 hours
+    # B. DIURNAL TEMPERATURE CYCLE
     t_sim = base_T + 1.5 * np.sin(2 * np.pi * step / 1440)
     
-    # -----------------------------------------------------
-    # B. LAG FEATURES (Directly from list, no dataframe shift)
-    # -----------------------------------------------------
-    lag1 = error_history[-1]
-    lag2 = error_history[-2]
-    lag5 = error_history[-5]
-    lag30 = error_history[-30]
+    # C. LAG FEATURES
+    lag1, lag2, lag5, lag30 = error_history[-1], error_history[-2], error_history[-5], error_history[-30]
     ma10 = np.mean(error_history[-10:])
     
-    # -----------------------------------------------------
-    # C. ML PREDICTION
-    # -----------------------------------------------------
+    # D. ML PREDICTION
     feat_row = np.array([[v_sim, i_sim, t_sim, lag1, lag2, lag5, lag30, ma10]])
     X_scaled = scaler.transform(feat_row)
     pred_err = model.predict(X_scaled)[0]
     
-    # -----------------------------------------------------
-    # D. PHYSICS RECONSTRUCTION + LOGICAL AGING
-    # -----------------------------------------------------
-    # We add a 0.2% efficiency drop over the week (aging_factor)
-    aging_factor = 1 - (0.002 * (step / future_steps))
-    theo_h2 = (i_sim / 2 / 96500) * 24.4651 * 1000 * 60
-    h2_final = max(0, (theo_h2 - pred_err) * aging_factor)
+    # E. PHYSICS RECONSTRUCTION (NO AGING FACTOR)
+    # Applying Omron D6F-P0001A1 ±5 mL/min Tolerance logic
+    theo = (i_sim / 2 / 96500) * 24.4651 * 1000 * 60
+    h2_base = theo - pred_err
+    h2_final = np.clip(h2_base, 0, 65)
     
-    # -----------------------------------------------------
-    # E. STORE & UPDATE
-    # -----------------------------------------------------
+    # F. TIMESTAMP (Fixed Baseline)
     next_time = start_time + pd.Timedelta(minutes=step + 1)
     
-    predictions.append({
-        'time': next_time, 
-        'H2_pred': h2_final
-    })
-    
-    # Update the error history list for the next iteration's lags
+    predictions.append({'time': next_time, 'H2_pred': h2_final})
     error_history.append(pred_err)
 
-# Convert to DataFrame
+# =========================================================
+# 🔥 5. SAVE & PLOT
+# =========================================================
 pred_df = pd.DataFrame(predictions)
-
-# =========================================================
-# 🔥 SAVE WITH MERGE
-# =========================================================
 file_path = "H2_1week_prediction.csv"
 
-if os.path.exists(file_path):
-    old_df = pd.read_csv(file_path)
-    old_df['time'] = pd.to_datetime(old_df['time'])
-else:
-    old_df = pd.DataFrame(columns=['time', 'H2_pred'])
+# Force Overwrite to prevent Merge Conflicts in GitHub Actions
+pred_df.to_csv(file_path, index=False)
 
-pred_df['time'] = pd.to_datetime(pred_df['time'])
+print(f"✅ Saved predictions to {file_path}")
 
-combined = pd.concat([old_df, pred_df])
-combined = combined.sort_values('time')
-combined = combined.drop_duplicates(subset='time', keep='last')
-
-combined.to_csv(file_path, index=False)
-
-print(f"✅ Saved predictions: {len(combined)} rows")
-
-# =========================================================
-# 🔥 PLOT
-# =========================================================
-def plot_forecast(pred_df):
-
-    if pred_df.empty:
-        print("❌ No data")
-        return
-
-    forecast = pred_df['H2_pred'].values
-
+def plot_forecast(df):
     plt.figure(figsize=(15, 6))
-
-    plt.subplot(2, 1, 1)
-    plt.plot(forecast[:1000])
-    plt.title("Short-Term Forecast")
-    plt.grid(True)
-
-    plt.subplot(2, 1, 2)
-    plt.plot(forecast)
-    plt.title("1-Week Forecast")
-    plt.grid(True)
-
-    plt.tight_layout()
+    plt.plot(df['H2_pred'].values, color='blue', linewidth=0.8)
+    plt.title("7-Day Continuous H2 Forecast (No Aging, Fixed Timezone)")
+    plt.ylabel("H2 (mL/min)")
+    plt.grid(True, alpha=0.3)
     plt.show()
 
 plot_forecast(pred_df)
