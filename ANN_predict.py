@@ -8,9 +8,9 @@ import os
 # =========================================================
 # 🔥 1. LOAD MODEL & ASSETS
 # =========================================================
-model = joblib.load("lag_model.pkl")
-scaler = joblib.load("lag_scaler.pkl")
-features = joblib.load("lag_features.pkl")
+model = joblib.load("ANN_lag_model.pkl")
+scaler = joblib.load("ANN_lag_scaler.pkl")
+features = joblib.load("ANN_lag_features.pkl")
 
 # =========================================================
 # 🔥 2. FETCH DATA (FIXED FOR MALAYSIA TIME)
