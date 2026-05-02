@@ -5,14 +5,16 @@ on:
 
 permissions:
   actions: read
-  contents: write # Allows the bot to save your forecast.csv
+  contents: write
 
 jobs:
   predict:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+        with:
+          fetch-depth: 0 # Downloads full history so rebase can succeed
+
       - name: Download Model from Training Workflow
         uses: dawidd6/action-download-artifact@v8
         with:
@@ -36,14 +38,15 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          # 1. Add the large CSV
+          # 1. Add the file
           git add forecast.csv
           
-          # 2. Commit only if the file actually changed
+          # 2. Commit only if there's a change
           git commit -m "Update electrolyzer forecast [1-month]" || exit 0
           
-          # 3. Pull latest changes and put your commit on top (The Fix)
-          git pull --rebase origin main
+          # 3. Fetch and Rebase (This is the critical part)
+          git fetch origin main
+          git rebase origin/main
           
-          # 4. Now push the combined history
+          # 4. Push
           git push origin main
