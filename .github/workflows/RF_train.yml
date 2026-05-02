@@ -29,8 +29,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: model-files
-          path: |
-            RF_lag_model.pkl
-            RF_lag_scaler.pkl
-            RF_lag_features.pkl
+          path: .
           retention-days: 7
