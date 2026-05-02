@@ -3,78 +3,103 @@ import numpy as np
 import joblib
 import requests
 import datetime
-import time
 
+import matplotlib.pyplot as plt
 from sklearn.neural_network import MLPRegressor
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.metrics import r2_score, mean_squared_error
 
 # =========================================================
-# 1. CONFIG
+# 1. FETCH 1-MONTH DATA
 # =========================================================
-CHANNEL_ID = '3321400'
-READ_KEY = '4Q4YD3ZW21602X7L'
+def get_one_month_data(channel_id, read_key):
+    all_chunks = []
+    end_date = datetime.datetime.now()
+
+    for i in range(30):
+        chunk_end = end_date - datetime.timedelta(days=i)
+        chunk_start = end_date - datetime.timedelta(days=i+1)
+
+        start_str = chunk_start.strftime('%Y-%m-%d%%20%H:%M:%S')
+        end_str = chunk_end.strftime('%Y-%m-%d%%20%H:%M:%S')
+
+        url = f'https://api.thingspeak.com/channels/{channel_id}/feeds.csv?api_key={read_key}&start={start_str}&end={end_str}'
+
+        try:
+            chunk_df = pd.read_csv(url)
+            if not chunk_df.empty:
+                all_chunks.append(chunk_df)
+        except:
+            pass
+
+    return pd.concat(all_chunks).drop_duplicates().reset_index(drop=True)
 
 # =========================================================
-# 2. LOAD DATA (SAFE SINGLE CALL - NO LOOP)
+# 2. LOAD DATA
 # =========================================================
-def get_data():
-    url = f"https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.csv?api_key={READ_KEY}&results=10000"
-    df = pd.read_csv(url).dropna()
-    return df
+df = get_one_month_data('3321400', '4Q4YD3ZW21602X7L')
 
-df = get_data()
-
-# =========================================================
-# 3. CLEAN + FORMAT
-# =========================================================
 df.rename(columns={
-    'field1': 'V',
-    'field2': 'I',
-    'field3': 'T',
-    'field4': 'H2_actual'
+    'field1':'V',
+    'field2':'I',
+    'field3':'T',
+    'field4':'H2_actual'
 }, inplace=True)
 
 df['created_at'] = pd.to_datetime(df['created_at'])
-
-df = df.drop_duplicates(subset='created_at')
 df = df.sort_values('created_at')
 
 # =========================================================
-# 4. RESAMPLE TO 1-MINUTE (SMOOTH SIGNAL)
+# 3. RESAMPLE (1 MIN)
 # =========================================================
 df = df.set_index('created_at')
 df = df.resample('1min').mean().dropna().reset_index()
 
-print("Final dataset size:", len(df))
-
 # =========================================================
-# 5. PHYSICS MODEL (FARADAY LAW)
+# 4. PHYSICS + ERROR
 # =========================================================
-F = 96500
-Vm = 24.465
-
-df['theo_H2'] = (df['I'] / (2 * F)) * Vm * 1000 * 60
-
-# ERROR TARGET
+df['theo_H2'] = (df['I'] / 2 / 96500) * 24.4651 * 1000 * 60
 df['target_err'] = df['theo_H2'] - df['H2_actual']
 
 # =========================================================
-# 6. FEATURE ENGINEERING
+# 5. LAG FEATURES (THE KEY UPGRADE)
 # =========================================================
-df['P'] = df['V'] * df['I']
 
-# Cycle feature (safe)
-df['cycle_pos'] = (df['I'] > 0.5).cumsum()
+# short-term memory
+df['err_lag1'] = df['target_err'].shift(1)
+df['err_lag2'] = df['target_err'].shift(2)
 
-# IMPORTANT FEATURES
-features = ['V', 'I', 'T', 'P']
+# medium memory
+df['err_lag5'] = df['target_err'].shift(5)
+
+# long memory (important for trend)
+df['err_lag30'] = df['target_err'].shift(30)
+
+# optional smoothing
+df['err_ma10'] = df['target_err'].rolling(10).mean()
+
+# =========================================================
+# 6. TARGET = FUTURE ERROR
+# =========================================================
+df['target_t1'] = df['target_err'].shift(-1)
+
+df = df.dropna()
+
+# =========================================================
+# 7. FEATURES
+# =========================================================
+features = [
+    'V', 'I', 'T',
+    'err_lag1', 'err_lag2',
+    'err_lag5', 'err_lag30',
+    'err_ma10'
+]
 
 X = df[features].values
-y = df['target_err'].values
+y = df['target_t1'].values
 
 # =========================================================
-# 7. TRAIN / TEST SPLIT (TIME SERIES)
+# 8. TRAIN / TEST SPLIT
 # =========================================================
 split = int(len(X) * 0.8)
 
@@ -82,7 +107,7 @@ X_train, X_test = X[:split], X[split:]
 y_train, y_test = y[:split], y[split:]
 
 # =========================================================
-# 8. SCALING
+# 9. SCALING
 # =========================================================
 scaler = MinMaxScaler()
 
@@ -90,37 +115,30 @@ X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
 
 # =========================================================
-# 9. ANN MODEL
+# 10. MODEL
 # =========================================================
 model = MLPRegressor(
-    hidden_layer_sizes=(16, 8),
+    hidden_layer_sizes=(32, 16),
     activation='tanh',
-    solver='lbfgs',
-    max_iter=5000,
+    solver='adam',   # better for temporal patterns
+    max_iter=3000,
     random_state=42
 )
 
-print("🧠 Training ANN Digital Twin...")
+print("🧠 Training LAG MODEL...")
 model.fit(X_train_scaled, y_train)
 
 # =========================================================
-# 10. PREDICTION
+# 11. PREDICTION
 # =========================================================
-y_pred_err = model.predict(X_test_scaled)
+y_pred = model.predict(X_test_scaled)
 
-# =========================================================
-# 11. RECONSTRUCT H2 OUTPUT
-# =========================================================
+# reconstruct H2
 I_test = X_test[:, features.index('I')]
+h2_theo = I_test * 7.6
 
-h2_theo = (I_test / (2 * F)) * Vm * 1000 * 60
-h2_pred = h2_theo - y_pred_err
-h2_actual = df['H2_actual'].values[split:]
-
-# Align safety
-min_len = min(len(h2_actual), len(h2_pred))
-h2_actual = h2_actual[:min_len]
-h2_pred = h2_pred[:min_len]
+h2_actual = h2_theo - y_test
+h2_pred = h2_theo - y_pred
 
 # =========================================================
 # 12. METRICS
@@ -128,17 +146,24 @@ h2_pred = h2_pred[:min_len]
 r2 = r2_score(h2_actual, h2_pred)
 rmse = np.sqrt(mean_squared_error(h2_actual, h2_pred))
 
-print("\n==============================")
-print(" DIGITAL TWIN PERFORMANCE")
-print("==============================")
-print(f"R2   : {r2:.4f}")
-print(f"RMSE : {rmse:.4f}")
+print(f"🔥 LAG MODEL R2: {r2:.4f}")
+print(f"🔥 LAG MODEL RMSE: {rmse:.4f}")
 
 # =========================================================
-# 13. SAVE MODEL + SCALER + FEATURES
+# 13. SAVE
 # =========================================================
-joblib.dump(model, "ann_electrolyser_model.pkl")
-joblib.dump(scaler, "ann_scaler.pkl")
-joblib.dump(features, "feature_list.pkl")
+joblib.dump(model, "lag_model.pkl")
+joblib.dump(scaler, "lag_scaler.pkl")
+joblib.dump(features, "lag_features.pkl")
 
-print("✅ Model, scaler, and features saved successfully")
+print("✅ Lag model saved")
+
+# =========================================================
+# 14. VISUALIZATION
+# =========================================================
+plt.figure(figsize=(12,5))
+plt.plot(h2_actual[:200], label='Actual')
+plt.plot(h2_pred[:200], '--', label='Lag Model')
+plt.legend()
+plt.title("Lag Model Prediction (t+1)")
+plt.show()
