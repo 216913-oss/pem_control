@@ -42,7 +42,9 @@ def get_recent_data(channel_id, read_key, minutes=1000):
     return df
 
 # Load Data
-df = get_recent_data(${{ secrets.THINGSPEAK_READ_ID }}, ${{ secrets.THINGSPEAK_READ_KEY }}, minutes=1000)
+ts_read_id = os.getenv('THINGSPEAK_READ_ID', '3321400')
+ts_read_key = os.getenv('THINGSPEAK_READ_KEY', '4Q4YD3ZW21602X7L')
+df = get_recent_data(ts_read_id, ts_read_key, minutes=1000)
 
 # =========================================================
 # 🔥 3. PHYSICS PREPARATION
