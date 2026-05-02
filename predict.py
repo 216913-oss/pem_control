@@ -1,93 +1,140 @@
-import os, joblib, requests, pandas as pd, numpy as np
+import os, joblib, pandas as pd, numpy as np
 from datetime import datetime, timedelta
 
-# --- CONFIGURATION ---
+# -----------------------------
+# CONFIG
+# -----------------------------
 CHANNEL_ID = '3321400'
-READ_KEY = os.getenv("THINGSPEAK_KEY") 
+READ_KEY = os.getenv("THINGSPEAK_KEY")
 CSV_FILE = "forecast.csv"
 
+F = 96500
+Vm = 24.465
+
+# -----------------------------
+# 1. GET CURRENT STATE
+# -----------------------------
 def get_state():
     url = f'https://api.thingspeak.com/channels/{CHANNEL_ID}/feeds.csv?api_key={READ_KEY}&results=500'
     df = pd.read_csv(url).dropna()
-    df.rename(columns={'field1': 'V', 'field2': 'I', 'field3': 'T'}, inplace=True)
-    df['created_at'] = pd.to_datetime(df['created_at'])
-    
-    df = df.sort_values('created_at').reset_index(drop=True)
-    is_running = df['I'] > 0.5
-    cycle_pos = 0
-    for i in range(1, len(df)):
-        if is_running.iloc[i]:
-            dt = (df.loc[i, 'created_at'] - df.loc[i-1, 'created_at']).total_seconds() / 60
-            cycle_pos += dt
-        else: cycle_pos = 0
-            
-    latest = df.iloc[-1]
-    return {'V': float(latest['V']), 'I': float(latest['I']), 'T': float(latest['T']), 'cycle_pos': cycle_pos}
 
+    df.rename(columns={
+        'field1': 'V',
+        'field2': 'I',
+        'field3': 'T',
+        'field4': 'H2_actual'
+    }, inplace=True)
+
+    df['created_at'] = pd.to_datetime(df['created_at'])
+    df = df.sort_values('created_at')
+
+    latest = df.iloc[-1]
+
+    return {
+        'V': float(latest['V']),
+        'I': float(latest['I']),
+        'T': float(latest['T'])
+    }
+
+# -----------------------------
+# 2. FORECAST FUNCTION
+# -----------------------------
 def generate_monthly_forecast(state):
+
     model = joblib.load('ann_electrolyser_model.pkl')
     scaler = joblib.load('ann_scaler.pkl')
-    
-    # 1 month = 30 days * 24 hours * 60 minutes = 43,200 rows
+    features = joblib.load('feature_list.pkl')
+
     total_min = 30 * 24 * 60
     t = np.arange(total_min)
     is_on = (t % 90) < 60
-    
-    # 1. Simulate the data
+
+    # -----------------------------
+    # FUTURE SIMULATION
+    # -----------------------------
     fut_df = pd.DataFrame({
-        'V': np.where(is_on, state['V'] + np.random.normal(0, 0.02, total_min), 1.5),
-        'I': np.where(is_on, state['I'] + np.random.normal(0, 0.05, total_min), 0.0),
-        'T': state['T'] + 2 * np.sin(2 * np.pi * t / 1440),
-        'cycle_pos': state['cycle_pos'] + t,
-        'power': 0.0
+        'V': np.where(is_on,
+                      state['V'] + np.random.normal(0, 0.02, total_min),
+                      1.5),
+
+        'I': np.where(is_on,
+                      state['I'] + np.random.normal(0, 0.05, total_min),
+                      0.0),
+
+        'T': state['T'] + 2 * np.sin(2 * np.pi * t / 1440)
     })
-    fut_df['power'] = fut_df['V'] * fut_df['I']
-    
-    # --- THE CRITICAL FIX ---
-    # Your scaler only wants the 3 original features (V, I, T). 
-    # We subset the dataframe before calling .values
-    input_features = fut_df[['V', 'I', 'T']] 
+
+    # POWER FEATURE (required)
+    fut_df['P'] = fut_df['V'] * fut_df['I']
+
+    # -----------------------------
+    # ENSURE FEATURE ORDER MATCHES TRAINING
+    # -----------------------------
+    input_features = fut_df[features]   # MUST be ['V','I','T','P']
+
     scaled = scaler.transform(input_features.values)
-    # ------------------------
-    
+
+    # -----------------------------
+    # PREDICT ERROR
+    # -----------------------------
     pred_err = model.predict(scaled)
-    
-    # Formula: $$H_2 = \max((I_{future} \times 7.6) - \text{error}, 0)$$
-    h2_forecast = np.where(is_on, np.maximum((fut_df['I'] * 7.6) - pred_err, 0), 0)
-    
-    # Generate timestamped rows with :00 seconds
+
+    # -----------------------------
+    # PHYSICS MODEL
+    # -----------------------------
+    h2_theo = (fut_df['I'] / (2 * F)) * Vm * 1000 * 60
+
+    h2_forecast = np.where(
+        is_on,
+        np.maximum(h2_theo - pred_err, 0),
+        0
+    )
+
+    # -----------------------------
+    # TIMESTAMPS
+    # -----------------------------
     now = datetime.utcnow().replace(second=0, microsecond=0)
-    new_rows = []
+
+    rows = []
     for i, val in enumerate(h2_forecast):
         ts = (now + timedelta(minutes=i)).strftime("%Y-%m-%d %H:%M:00")
-        new_rows.append({"timestamp": ts, "h2_value": float(val), "category": "Forecast"})
-    
-    return pd.DataFrame(new_rows)
+        rows.append({
+            "timestamp": ts,
+            "h2_value": float(val),
+            "category": "Forecast"
+        })
 
+    return pd.DataFrame(rows)
+
+# -----------------------------
+# 3. MAIN PIPELINE
+# -----------------------------
 if __name__ == "__main__":
+
     print("🔋 Fetching Electrolyser state...")
     state = get_state()
-    
-    print("🔮 Generating 1-Month Forecast (43,200 data points)...")
+
+    print("🔮 Generating 1-Month Forecast...")
     new_forecast_df = generate_monthly_forecast(state)
-    
+
     now_str = datetime.utcnow().replace(second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:00")
 
     if os.path.exists(CSV_FILE):
         old_df = pd.read_csv(CSV_FILE)
-        # Keep Actuals and convert passed forecasts to Actuals
+
         history = old_df[old_df['category'] == 'Actual']
-        passed_forecasts = old_df[(old_df['category'] == 'Forecast') & (old_df['timestamp'] < now_str)].copy()
-        passed_forecasts['category'] = 'Actual'
-        
-        # Merge and remove duplicates (keep newest AI prediction)
-        final_df = pd.concat([history, passed_forecasts, new_forecast_df]).drop_duplicates('timestamp', keep='last')
+        passed = old_df[(old_df['category'] == 'Forecast') &
+                        (old_df['timestamp'] < now_str)].copy()
+
+        passed['category'] = 'Actual'
+
+        final_df = pd.concat([history, passed, new_forecast_df])
+        final_df = final_df.drop_duplicates('timestamp', keep='last')
     else:
         final_df = new_forecast_df
 
-    # Safety Cap: 60,000 rows (Approx 1 month forecast + 11 days of history)
-    # This prevents the CSV from growing until it crashes your Power BI Desktop
-    final_df = final_df.sort_values('timestamp').tail(60000) 
-    
+    final_df = final_df.sort_values('timestamp').tail(60000)
+
     final_df.to_csv(CSV_FILE, index=False)
-    print(f"✅ Success! Master CSV updated. Total rows: {len(final_df)}")
+
+    print(f"✅ Forecast updated | Rows: {len(final_df)}")
