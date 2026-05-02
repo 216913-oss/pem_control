@@ -18,32 +18,28 @@ features = joblib.load("lag_features.pkl")
 import pytz
 
 def get_recent_data(channel_id, read_key, minutes=1000):
-    # Set timezone to Malaysia
-    tz = pytz.timezone('Asia/Kuala_Lumpur')
-    end = datetime.datetime.now(tz)
-    start = end - datetime.timedelta(minutes=minutes)
+    # Force UTC+8 (Malaysia Time)
+    tz_offset = datetime.timezone(datetime.timedelta(hours=8))
     
-    # ThingSpeak expects format: YYYY-MM-DD%20HH:NN:SS
+    # Get current time in Malaysia
+    end = datetime.datetime.now(tz_offset)
+    start = end - datetime.timedelta(minutes=minutes)
+
     start_str = start.strftime('%Y-%m-%d%%20%H:%M:%S')
     end_str = end.strftime('%Y-%m-%d%%20%H:%M:%S')
 
     url = f'https://api.thingspeak.com/channels/{channel_id}/feeds.csv?api_key={read_key}&start={start_str}&end={end_str}'
+    
     df = pd.read_csv(url)
-
-    df.rename(columns={
-        'field1': 'V',
-        'field2': 'I',
-        'field3': 'T',
-        'field4': 'H2_actual'
-    }, inplace=True)
-
-    df['created_at'] = pd.to_datetime(df['created_at'])
+    df.rename(columns={'field1':'V','field2':'I','field3':'T','field4':'H2_actual'}, inplace=True)
+    
+    # Ensure the 'created_at' from ThingSpeak is converted to MYT
+    df['created_at'] = pd.to_datetime(df['created_at']).dt.tz_convert('Asia/Kuala_Lumpur').dt.tz_localize(None)
 
     df = df.set_index('created_at')
-    df = df.resample('1min').mean().fillna(0).reset_index()
+    df = df.resample('1min').mean().fillna(method='ffill').reset_index()
 
     return df
-
 
 # =========================================================
 # 🔥 LOAD DATA
