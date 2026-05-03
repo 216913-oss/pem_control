@@ -72,12 +72,11 @@ error_history = history['target_err'].tolist()
 print(f"🚀 Generating forecast for {future_steps} minutes (No Aging)...")
 
 for step in range(future_steps):
-    # A. SENSOR FLUCTUATIONS (Logical Jitter)
-    v_sim = base_V + np.random.uniform(-0.00489, 0.00489)
-    i_sim = base_I + np.random.uniform(-0.3, 0.3)
+    v_sim = base_V
+    i_sim = base_I
     
     # B. DIURNAL TEMPERATURE CYCLE
-    t_sim = base_T + 1.5 * np.sin(2 * np.pi * step / 1440)
+    t_sim = base_T
     
     # C. LAG FEATURES
     lag1, lag2, lag5, lag30 = error_history[-1], error_history[-2], error_history[-5], error_history[-30]
@@ -89,7 +88,6 @@ for step in range(future_steps):
     pred_err = model.predict(X_scaled)[0]
     
     # E. PHYSICS RECONSTRUCTION (NO AGING FACTOR)
-    # Applying Omron D6F-P0001A1 ±5 mL/min Tolerance logic
     theo = (i_sim / 2 / 96500) * 24.4651 * 1000 * 60
     h2_base = theo - pred_err
     h2_final = np.clip(h2_base, 0, 65)
