@@ -74,12 +74,11 @@ error_history = history['target_err'].tolist()
 print(f"🚀 Generating 7-day Random Forest forecast...")
 
 for step in range(future_steps):
-    # A. SENSOR FLUCTUATIONS (Hardware specific jitter)
-    v_sim = base_V + np.random.uniform(-0.00489, 0.00489)
-    i_sim = base_I + np.random.uniform(-0.3, 0.3)
+    v_sim = base_V
+    i_sim = base_I
     
     # B. DIURNAL TEMPERATURE CYCLE (24-hour sine wave)
-    t_sim = base_T + 1.5 * np.sin(2 * np.pi * step / 1440)
+    t_sim = base_T
     
     # C. LAG FEATURES
     lag1, lag2, lag5, lag30 = error_history[-1], error_history[-2], error_history[-5], error_history[-30]
