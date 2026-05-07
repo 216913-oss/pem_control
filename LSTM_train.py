@@ -64,7 +64,7 @@ def create_sequences(data, target, window_size=10):
     return np.array(X), np.array(y)
 
 WINDOW_SIZE = 10 # Model looks at the last 10 minutes to predict the next
-features = ['V', 'I', 'T', 'target_err'] # Added target_err to features so it learns from history
+features = ['V', 'I', 'T'] # Added target_err to features so it learns from history
 
 # Scale data before creating sequences
 scaler = MinMaxScaler()
