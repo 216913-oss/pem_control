@@ -35,7 +35,7 @@ jobs:
         with:
           name: lstm-model-files  # Unique name
           path: |
-            LSTM_lag_model.pkl
-            LSTM_lag_scaler.pkl
-            LSTM_lag_features.pkl
+            LSTM_model.pkl
+            LSTM_scaler.pkl
+            LSTM_features.pkl
           retention-days: 7
