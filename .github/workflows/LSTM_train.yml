@@ -35,6 +35,7 @@ jobs:
         with:
           name: lstm-model-files  # Unique name
           path: |
+            LSTM_model.h5
             LSTM_model.pkl
             LSTM_scaler.pkl
             LSTM_features.pkl
