@@ -1,8 +1,8 @@
 name: RF Daily Train
 
 on:
-  schedule:
-    - cron: "0 0 * * *"  # Runs at 00:00 UTC every day
+  repository_dispatch:
+    types: [trigger-training]
   workflow_dispatch:      # Allows you to run it manually from the "Actions" tab
 
 jobs:
