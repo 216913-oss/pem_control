@@ -1,6 +1,7 @@
 name: ANN Predict
 on:
-  schedule: [{cron: "*/5 * * * *"}]
+  repository_dispatch:
+    types: [trigger-training]
   workflow_dispatch:
 
 permissions:
