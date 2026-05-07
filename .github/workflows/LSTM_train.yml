@@ -1,0 +1,41 @@
+name: LSTM Daily Train
+
+on:
+  schedule:
+    - cron: "0 0 * * *"  # Runs at 00:00 UTC every day
+  workflow_dispatch:      # Allows you to run it manually from the "Actions" tab
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Training Script
+        env:
+          # Map your GitHub Secrets to these Environment Variables
+          THINGSPEAK_READ_ID: ${{ secrets.THINGSPEAK_READ_ID }}
+          THINGSPEAK_READ_KEY: ${{ secrets.THINGSPEAK_READ_KEY }}
+          THINGSPEAK_WRITE_KEY: ${{ secrets.THINGSPEAK_WRITE_KEY }}
+        run: python LSTM_train.py
+
+      - name: Upload Model Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: lstm-model-files  # Unique name
+          path: |
+            LSTM_lag_model.pkl
+            LSTM_lag_scaler.pkl
+            LSTM_lag_features.pkl
+          retention-days: 7
