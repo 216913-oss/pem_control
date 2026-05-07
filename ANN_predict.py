@@ -99,22 +99,56 @@ for step in range(future_steps):
     error_history.append(pred_err)
 
 # =========================================================
-# 🔥 5. SAVE & PLOT
+# 🔥 5. SMART MERGE, SAVE & PLOT
 # =========================================================
 pred_df = pd.DataFrame(predictions)
 file_path = "ANN_prediction.csv"
 
-# Force Overwrite to prevent Merge Conflicts in GitHub Actions
-pred_df.to_csv(file_path, index=False)
+# 1. Load existing data if it exists
+if os.path.exists(file_path):
+    try:
+        old_df = pd.read_csv(file_path)
+        old_df['time'] = pd.to_datetime(old_df['time'])
+        
+        # 2. Combine old and new data
+        # We put pred_df (new) after old_df so that new values are preferred
+        combined_df = pd.concat([old_df, pred_df], ignore_index=True)
+        
+        # 3. Deduplicate: If timestamps overlap, keep the LAST one (the new prediction)
+        # This keeps past history while updating future values with the latest forecast
+        combined_df = combined_df.drop_duplicates(subset=['time'], keep='last')
+        
+        # 4. Sort by time and limit size (Optional: Keep last 30 days to prevent huge files)
+        combined_df = combined_df.sort_values('time')
+        
+        # Optional: Uncomment the line below to keep only the last 45,000 minutes (~1 month)
+        # combined_df = combined_df.tail(45000) 
+        
+        final_df = combined_df
+        print(f"🔄 Merged {len(pred_df)} new predictions with existing history.")
+    except Exception as e:
+        print(f"⚠️ Error loading old CSV, starting fresh: {e}")
+        final_df = pred_df
+else:
+    print("🆕 No existing CSV found. Creating new one.")
+    final_df = pred_df
 
-print(f"✅ Saved predictions to {file_path}")
+# 5. Save the combined results
+final_df.to_csv(file_path, index=False)
+print(f"✅ Saved updated rolling predictions to {file_path}")
 
+# --- Plotting ---
 def plot_forecast(df):
     plt.figure(figsize=(15, 6))
-    plt.plot(df['H2_pred'].values, color='blue', linewidth=0.8)
-    plt.title("7-Day Continuous H2 Forecast (No Aging, Fixed Timezone)")
+    # We plot the last 10,000 minutes so the plot doesn't get too crowded
+    plot_data = df.tail(10080) 
+    plt.plot(plot_data['time'], plot_data['H2_pred'], color='blue', linewidth=0.8)
+    plt.title("H2 Forecast: Past History + 7-Day Future (Updated Every 5m)")
     plt.ylabel("H2 (mL/min)")
+    plt.xlabel("Time")
     plt.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    plt.tight_layout()
     plt.show()
 
-plot_forecast(pred_df)
+plot_forecast(final_df)
