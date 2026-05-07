@@ -24,7 +24,11 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           workflow: LSTM_train.yml 
           name: lstm-model-files 
-          path: . 
+          path: |
+            LSTM_model.h5
+            LSTM_model.pkl
+            LSTM_scaler.pkl
+            LSTM_features.pkl 
           latest_status: completed
 
       - uses: actions/setup-python@v5
