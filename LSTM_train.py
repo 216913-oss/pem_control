@@ -136,8 +136,8 @@ joblib.dump(features, "LSTM_features.pkl")
 upload_url = (
     f"https://api.thingspeak.com/update?"
     f"api_key={ts_write_key}"
-    f"&field1={float(r2):.4f}"
-    f"&field2={float(rmse):.4f}"
+    f"&field5={float(r2):.4f}"
+    f"&field6={float(rmse):.4f}"
 )
 try:
     requests.get(upload_url)
