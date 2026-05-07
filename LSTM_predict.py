@@ -10,7 +10,7 @@ from tensorflow.keras.models import load_model
 # 🔥 1. LOAD LSTM MODEL & ASSETS
 # =========================================================
 # LSTMs are usually saved as .h5 or .keras files
-model = load_model("LSTM_model.h5") 
+model = load_model("LSTM_model.h5", compile=False)
 scaler = joblib.load("LSTM_scaler.pkl")
 
 # Note: Ensure these match what you used during training
