@@ -1,7 +1,7 @@
 name: RF Predict
 on:
   repository_dispatch:
-    types: [trigger-training]
+    types: [trigger-prediction]
   workflow_dispatch:
 
 permissions:
