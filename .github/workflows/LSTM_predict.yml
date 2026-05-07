@@ -22,14 +22,10 @@ jobs:
         uses: dawidd6/action-download-artifact@v8
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: LSTM_train.yml 
+          workflow: LSTM_train.yml # Ensure this matches your ACTUAL filename
           name: lstm-model-files 
-          path: |
-            LSTM_model.h5
-            LSTM_model.pkl
-            LSTM_scaler.pkl
-            LSTM_features.pkl 
-          latest_status: completed
+          path: .  # Downloads files directly into the root
+          workflow_conclusion: success # Corrected from latest_status
 
       - uses: actions/setup-python@v5
         with: {python-version: '3.10'}
