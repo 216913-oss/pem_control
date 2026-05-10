@@ -96,7 +96,7 @@ early_stop = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=
 
 history = model.fit(
     X_train, y_train,
-    epochs=100,
+    epochs=500,
     batch_size=32,
     validation_split=0.1,
     callbacks=[early_stop],
