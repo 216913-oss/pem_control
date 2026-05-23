@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Protected Portal</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: #1e293b; padding: 40px; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); text-align: center; width: 320px; border: 1px solid #334155; }
+        h2 { margin-bottom: 24px; font-weight: 500; font-size: 1.5rem; color: #38bdf8; }
+        input { width: 100%; padding: 12px; margin-bottom: 16px; border: 1px solid #475569; background: #0f172a; color: white; border-radius: 6px; box-sizing: border-box; font-size: 1rem; text-align: center; }
+        input:focus { outline: none; border-color: #38bdf8; }
+        button { width: 100%; padding: 12px; background: #0284c7; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+        button:hover { background: #0369a1; }
+        #error-msg { color: #f87171; font-size: 0.875rem; margin-top: 12px; display: none; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h2>Project Access</h2>
+        <input type="password" id="passkey" placeholder="Enter password" onkeydown="if(event.key === 'Enter') verify()">
+        <button onclick="verify()">Unlock</button>
+        <p id="error-msg">Invalid password. Please try again.</p>
+    </div>
+
+    <script>
+        function verify() {
+            const input = document.getElementById("passkey").value.trim();
+            if (input) {
+                // It immediately attempts to navigate to 'yourpassword.html'
+                window.location.href = input + ".html";
+            }
+        }
+    </script>
+</body>
+</html>
