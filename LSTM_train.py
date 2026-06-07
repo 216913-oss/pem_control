@@ -56,7 +56,7 @@ df['target_err'] = df['theo_H2'] - df['H2_actual']
 # 4. SEQUENCE GENERATION (CRITICAL FOR LSTM)
 # =========================================================
 # Instead of manual lags, we create a 3D window
-def create_sequences(data, target, window_size=10):
+def create_sequences(data, target, window_size=30):
     X, y = [], []
     for i in range(len(data) - window_size):
         X.append(data[i : i + window_size])
