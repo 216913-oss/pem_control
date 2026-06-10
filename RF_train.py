@@ -17,7 +17,7 @@ def get_one_month_data(channel_id, read_key):
     all_chunks = []
     end_date = datetime.datetime.now()
 
-    for i in range(30):
+    for i in range(100):
         chunk_end = end_date - datetime.timedelta(days=i)
         chunk_start = end_date - datetime.timedelta(days=i+1)
 
