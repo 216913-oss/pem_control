@@ -1,4 +1,4 @@
-name: RF Daily Train
+name: RF Train
 
 on:
   repository_dispatch:
