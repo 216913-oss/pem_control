@@ -1,4 +1,4 @@
-name: ANN Daily Train
+name: ANN Train
 
 on:
   repository_dispatch:
