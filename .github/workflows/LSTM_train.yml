@@ -1,4 +1,4 @@
-name: LSTM Daily Train
+name: LSTM Train
 
 on:
   repository_dispatch:
