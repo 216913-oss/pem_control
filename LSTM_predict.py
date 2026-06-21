@@ -14,7 +14,7 @@ model = load_model("LSTM_model.h5", compile=False)
 scaler = joblib.load("LSTM_scaler.pkl")
 
 # Note: Ensure these match what you used during training
-WINDOW_SIZE = 10  # Number of past minutes the LSTM looks at
+WINDOW_SIZE = 30  # Number of past minutes the LSTM looks at
 FEATURES_LIST = ['V', 'I', 'T'] 
 
 # =========================================================
